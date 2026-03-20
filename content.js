@@ -1,5 +1,5 @@
 // Scans Marstoy pages and updates products that match sets via the Rebrickable API, caches data in localStorage
-if (typeof browser === "undefined") {
+if (typeof browser === 'undefined') {
   // Chrome compatibility for Firefox-style API
   window.browser = {
     ...chrome,
@@ -12,7 +12,7 @@ if (typeof browser === "undefined") {
     runtime: {
       ...chrome.runtime
     },
-  };
+  }
 }
 
 (function () {
@@ -23,7 +23,7 @@ if (typeof browser === "undefined") {
   }
 
   function extractSku (handle) {
-    return handle.match(/\b([mn]\d{5})(?!\d)/i)?.[1]?.toUpperCase() ?? null
+    return handle.match(/\b([mn]\d{5,6})(?!\d)/i)?.[1]?.toUpperCase() ?? null
   }
 
   // Check cache
@@ -34,16 +34,10 @@ if (typeof browser === "undefined") {
     } catch { return null }
   }
 
-  // Process an item listing page
-  function processListingPage () {
-    document.querySelectorAll('product-item:not([data-already-processed])').forEach(processListingItem)
-  }
-
   // Fetch data from Rebrickable API
   async function fetchProduct (sku) {
     const cached = cacheGet(sku)
     if (cached) {
-      // log('Cache hit', sku)
       return cached
     }
 
@@ -77,7 +71,12 @@ if (typeof browser === "undefined") {
     })()
   }
 
-  async function processListingItem (productItem) {
+  function processNonProductPage () {
+    document.querySelectorAll('.advc-product-item__wrapper:not([data-already-processed])').forEach(processAdvcItem)
+    document.querySelectorAll('product-item:not([data-already-processed])').forEach(processProductItem)
+  }
+
+  async function processProductItem (productItem) {
     if (productItem.dataset.alreadyProcessed) return
     productItem.dataset.alreadyProcessed = '1'
 
@@ -112,6 +111,39 @@ if (typeof browser === "undefined") {
     log('Finished processing list page item:', sku, data.name)
   }
 
+  // new display module on the front page, no product-item data
+  async function processAdvcItem (wrapper) {
+    if (wrapper.dataset.alreadyProcessed) return
+    wrapper.dataset.alreadyProcessed = '1'
+
+    const anchor = wrapper.querySelector('a[href]')
+    if (!anchor) return
+
+    const handle = anchor.getAttribute('href').replace('/products/', '')
+    const sku = extractSku(handle)
+    if (!sku) {
+      log('No SKU found for advc handle:', handle)
+      return
+    }
+
+    const data = await fetchProduct(sku)
+    if (!data) return
+
+    const titleEl = wrapper.querySelector('.advc-product-item-title')
+    if (titleEl) titleEl.textContent = `[${toRebrickableId(sku)}] ${data.name}`
+
+    if (data.imageUrl) {
+      const img = wrapper.querySelector('img.advc-image')
+      if (img) {
+        img.src = data.imageUrl
+        img.srcset = data.imageUrl
+        img.alt = data.name
+      }
+    }
+
+    log('Finished processing advc item:', sku, data.name)
+  }
+
   async function processProductPage () {
     const titleElement = document.querySelector('h1.product-detail__title')
     if (!titleElement || titleElement.dataset.alreadyProcessed) return
@@ -142,6 +174,11 @@ if (typeof browser === "undefined") {
           img.src = data.imageUrl
           img.srcset = data.imageUrl
           img.alt = data.name
+          img.onload = () => {
+            const ratio = img.naturalWidth / img.naturalHeight
+            const carousel = document.querySelector('theme-carousel.media-gallery__content')
+            if (carousel) carousel.style.setProperty('--current-media-aspect-ratio', ratio)
+          }
         })
     }
 
@@ -157,8 +194,6 @@ if (typeof browser === "undefined") {
   }
 
   // main
-  const debouncedProcessListingPage = debounce(processListingPage, 300)
-
   let API_KEY = ''
   let DEBUG_LOGGING = false
   browser.storage.sync.get(['apiKey', 'debugLogging']).then(result => {
@@ -170,13 +205,19 @@ if (typeof browser === "undefined") {
       return
     }
 
-    new MutationObserver(debouncedProcessListingPage).observe(document.body, { childList: true, subtree: true })
-
-    log('Scanning page')
     if (document.querySelector('h1.product-detail__title')) {
+      log('Scanning product page')
       processProductPage().catch(err => log('Product page error', err))
     } else {
-      processListingPage()
+      log('Scanning non-product page')
+      processNonProductPage()
+
+      const debouncedScan = debounce(() => {
+        log('DOM changed, re-scanning')
+        processNonProductPage()
+      }, 300)
+
+      new MutationObserver(debouncedScan).observe(document.body, { childList: true, subtree: true })
     }
   })
 })()
