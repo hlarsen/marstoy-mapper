@@ -1,0 +1,6 @@
+# Local API key file so I don't have to look it up
+api-key.txt
+
+# IDEs
+.idea/
+.vscode/

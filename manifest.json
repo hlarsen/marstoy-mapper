@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Marstoy Mapper",
+  "version": "1.0",
+  "description": "Updates product data on Marstoy with data from Rebrickable",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.marstoy.net/*",
+    "*://*.marstoy.com/*",
+    "*://*.rebrickable.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://*.marstoy.net/*", "*://*.marstoy.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "hlarsen@example.com",
+      "strict_min_version": "109.0"
+    }
+  }
+}
